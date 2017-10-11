@@ -14,7 +14,7 @@ class SpeedThread(QThread):
     """
     Thread qui se charge de se connecter à l'automate et de communiquer avec lui.
     """
-    SLEEP_TIME_MS = 10
+    SLEEP_TIME_MS = 240
     SLEEP_ON_ERROR_MS = 1000
     NEW_SPEED_SIGNAL = pyqtSignal('unsigned long long', 'unsigned long long')
 
@@ -100,10 +100,21 @@ class SpeedThread(QThread):
         try:
             self._connect()
             while True:
+                # Récupération de la vitesse
+                ts_before_get_speed = time.time()
                 mondon_speed = self._get_speed()
-                ts = int(round(time.time() * 1000))
+                ts_after_get_speed = time.time()
+
+                # Calcule combien de temps on a mis à récupérer la vitesse
+                delay = ts_after_get_speed - ts_before_get_speed
+
+                # Émets une nouvelle paire timestamp/vitesse
+                ts = int(round(ts_after_get_speed * 1000))
                 self.NEW_SPEED_SIGNAL.emit(mondon_speed, ts)
-                self.msleep(SpeedThread.SLEEP_TIME_MS)
+
+                # Pause pendant SpeedThread.SLEEP_TIME_MS (moins le temps qu'il a fallu pour
+                # récupérer la vitesse.
+                self.msleep(max(0, SpeedThread.SLEEP_TIME_MS - delay))
         except Exception as e:
             logger.log("SPEED_THREAD", "Erreur: {}".format(e))
             self.msleep(SpeedThread.SLEEP_ON_ERROR_MS)
