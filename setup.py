@@ -4,7 +4,7 @@ executables = [Executable(
     script="main.py",
     base="Win32GUI",
     icon="icon/logo_get_speed.ico",
-    targetName="Get speed3.exe"
+    targetName="Server Mondon.exe"
     )]
 include_files = ["icon", "objct"]
 packages = ["idna"]
