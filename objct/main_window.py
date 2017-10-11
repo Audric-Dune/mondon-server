@@ -96,7 +96,7 @@ class MainWindow(QMainWindow):
             if retry_on_failure:
                 logger.log("MAIN_WINDOW", "Pause pendant {} ms et réessaye"
                            .format(MainWindow.SLEEP_ON_ERROR_MS))
-                time.sleep(MainWindow.SLEEP_ON_ERROR_MS * 1000)
+                time.sleep(MainWindow.SLEEP_ON_ERROR_MS / 1000)
                 self.handle_new_speed(speed_value, ts, retry_on_failure=False)
             else:
                 logger.log("MAIN_WINDOW", "Abandon")

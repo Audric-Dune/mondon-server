@@ -14,7 +14,7 @@ class SpeedThread(QThread):
     """
     Thread qui se charge de se connecter à l'automate et de communiquer avec lui.
     """
-    SLEEP_TIME_MS = 1000
+    SLEEP_TIME_MS = 10
     SLEEP_ON_ERROR_MS = 1000
     NEW_SPEED_SIGNAL = pyqtSignal('unsigned long long', 'unsigned long long')
 
