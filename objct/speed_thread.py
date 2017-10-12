@@ -1,31 +1,38 @@
 # !/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from datetime import datetime
+import locale
 from PyQt5.QtCore import pyqtSignal, QThread
 from random import randint
 import socket
 import time
 
 from objct.automate_command import CONNECT, GET_SPEED
+from objct.base_de_donnee import Database
 from objct.logger import logger
 
 
 class SpeedThread(QThread):
     """
     Thread qui se charge de se connecter à l'automate et de communiquer avec lui.
+    S'occupe de récupérer les nouvelles vitesses et de les insérer dans la base de données.
     """
     SLEEP_TIME_MS = 240
     SLEEP_ON_ERROR_MS = 1000
     NEW_SPEED_SIGNAL = pyqtSignal('unsigned long long', 'unsigned long long')
+    ERROR_SIGNAL = pyqtSignal('QString')
 
-    def __init__(self, automate_ip, automate_port):
+    def __init__(self, automate_ip, automate_port, db_location):
         """
         Crée une nouvelle instance de SpeedThread
         """
         QThread.__init__(self)
         self.socket = None
+        self.db = None
         self.automate_ip = automate_ip
         self.automate_port = automate_port
+        self.db_location = db_location
 
     def _init_socket(self):
         """
@@ -89,6 +96,38 @@ class SpeedThread(QThread):
         logger.log("SPEED_THREAD", "Nouvelle vitesse reçue: {}".format(mondon_speed))
         return mondon_speed
 
+    @staticmethod
+    def timestamp_to_date(millitimestamp):
+        """
+        Utilitaire pour convertir un millitimestamp en date + heure.
+        :param millitimestamp: le millitimestamp à convertir
+        :return: Un string au format
+                 "<années>:<mois>:<jours> <heures>:<minutes>:<secondes>.<millisecondes>"
+                 ou "????-??-?? ??:??:??" en cas d'erreur.
+        """
+        ts = millitimestamp / 1000
+        try:
+            locale.setlocale(locale.LC_TIME, '')
+            return datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S.%f')
+        except:
+            return '????-??-?? ??:??:??'
+
+    def _save_speed(self, ts, speed):
+        """
+        Gère l'insertion de la nouvelle vitesse dans la base de données et signal le résultat.
+        :param speed_value: Nouvelle vitesse
+        :param ts: Millitimestamp de quand on a reçu la vitesse
+        """
+        logger.log("SPEED_THREAD", "Insert vitesse {} au temps {}"
+                   .format(speed, SpeedThread.timestamp_to_date(ts)))
+        try:
+            self.db.insert_speed(speed, ts)
+            self.NEW_SPEED_SIGNAL.emit(speed, ts)
+        except Exception as e:
+            self.ERROR_SIGNAL.emit(str(e))
+            logger.log("SPEED_THREAD", "Erreur lors de l'insertion dans la base de données: {}"
+                       .format(e))
+
     def run(self):
         """
         Méthode principale qui sera exécuter sur un nouveau thread.
@@ -97,25 +136,27 @@ class SpeedThread(QThread):
         En cas d'erreur, un pause de `SLEEP_ON_ERROR_MS` millisecondes est prise avant de
         recommencer (depuis le début, création de la connexion incluse).
         """
+        self.db = Database(self.db_location)
         try:
             self._connect()
             while True:
                 # Récupération de la vitesse
-                ts_before_get_speed = time.time()
+                ts_before = time.time()
                 mondon_speed = self._get_speed()
-                ts_after_get_speed = time.time()
 
-                # Calcule combien de temps on a mis à récupérer la vitesse
-                delay = ts_after_get_speed - ts_before_get_speed
+                # Sauvegarde la nouvelle vitesse
+                ts = int(round(time.time() * 1000))
+                self._save_speed(ts, mondon_speed)
 
-                # Émets une nouvelle paire timestamp/vitesse
-                ts = int(round(ts_after_get_speed * 1000))
-                self.NEW_SPEED_SIGNAL.emit(mondon_speed, ts)
+                # Calcule combien de temps on a mis à récupérer et sauvegarder la vitesse
+                ts_after = time.time()
+                delay = ts_after - ts_before
 
                 # Pause pendant SpeedThread.SLEEP_TIME_MS (moins le temps qu'il a fallu pour
-                # récupérer la vitesse.
+                # récupérer la vitesse et la sauvegarder dans la base de données).
                 self.msleep(max(0, SpeedThread.SLEEP_TIME_MS - delay))
         except Exception as e:
+            self.ERROR_SIGNAL.emit(str(e))
             logger.log("SPEED_THREAD", "Erreur: {}".format(e))
             self.msleep(SpeedThread.SLEEP_ON_ERROR_MS)
             self.run()
